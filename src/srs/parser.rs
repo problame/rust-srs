@@ -53,9 +53,6 @@ pub struct SRS1Address {
     pub hostname: String,
     pub opaque_local: String,
     pub domain: String,
-    // domain
-    // TODO: cannot parse the above because the parse_srs1 routine
-    //       cannot say 'and now everything until the LOCAL_DOMAIN_SEPARATOR'
 }
 
 struct SRSParser<'a> {
