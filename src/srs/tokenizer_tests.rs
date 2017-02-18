@@ -42,4 +42,19 @@ mod test {
             Text("user"),SRSSeparator,SRSSeparator,Text("foo"),
         ]);
     }
+
+    #[test]
+    fn it_parses_srs_tokens() {
+        assert_tokenize("SRS1=something", vec![SRS(1),SRSSeparator,Text("something")]);
+        assert_tokenize("SRS0=something", vec![SRS(0),SRSSeparator,Text("something")]);
+        assert_tokenize("something=SRS0", vec![Text("something"),SRSSeparator,SRS(0)]);
+        assert_tokenize("something=SRS1", vec![Text("something"),SRSSeparator,SRS(1)]);
+    }
+
+    #[test]
+    fn it_doesnt_parse_srs_substring() {
+        assert_tokenize("SRS1substring=foo", vec![
+            Text("SRS1substring"),SRSSeparator,Text("foo")
+        ]);
+    }
 }

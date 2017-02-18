@@ -17,6 +17,7 @@ impl<'a> Tokenizer<'a> {
 pub enum Token<'a> {
     SRSSeparator,
     LocalDomainSeparator,
+    SRS(usize),
     Text(&'a str),
 }
 
@@ -41,7 +42,14 @@ impl<'a> Iterator for Tokenizer<'a> {
 
                 use std::cmp::min;
                 let mut move_chars = min(next_srs_sep, next_local_domain_sep);
-                (Token::Text(&match_text[..move_chars]), move_chars)
+
+                let token_text = &match_text[..move_chars];
+                let token = match token_text {
+                    "SRS0" => Token::SRS(0),
+                    "SRS1" => Token::SRS(1),
+                    _      => Token::Text(token_text),
+                };
+                (token, move_chars)
             }
         };
 
