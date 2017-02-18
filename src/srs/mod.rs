@@ -3,6 +3,8 @@ mod tokenizer;
 mod tokenizer_tests;
 
 use std::collections::VecDeque;
+use srs::tokenizer::*;
+use srs::tokenizer::Token::*;
 
 const SRS_SEPARATOR: &'static str = "=";
 const LOCAL_DOMAIN_SEPARATOR: &'static str = "@";
@@ -10,12 +12,12 @@ const LOCAL_DOMAIN_SEPARATOR: &'static str = "@";
 use self::SRSAddress::*;
 
 #[derive(Debug)]
-enum SRSAddress<'a> {
-    SRS0(SRS0Address<'a>),
-    SRS1(SRS1Address<'a>),
+enum SRSAddress {
+    SRS0(SRS0Address),
+    SRS1(SRS1Address),
 }
 
-impl<'a> SRSAddress<'a> {
+impl SRSAddress {
     fn get_version(&self) -> u8 {
         match self {
             &SRS0(_) => 0,
@@ -24,13 +26,13 @@ impl<'a> SRSAddress<'a> {
     }
     fn is_0(&self) -> bool { return self.get_version() == 0; }
     fn is_1(&self) -> bool { return self.get_version() == 1; }
-    fn SRS0(self) -> SRS0Address<'a> { 
+    fn SRS0(self) -> SRS0Address {
         match self {
             SRS0(srs) => srs,
             _         => panic!("not an SRS0"),
         }
     }
-    fn SRS1(self) -> SRS1Address<'a> { 
+    fn SRS1(self) -> SRS1Address {
         match self {
             SRS1(srs) => srs,
             _         => panic!("not an SRS1"),
@@ -40,163 +42,187 @@ impl<'a> SRSAddress<'a> {
 }
 
 #[derive(Debug)]
-struct SRS0Address<'a> {
-    hash: &'a str,
-    tt: &'a str,
-    hostname: &'a str,
-    local: &'a str,
-    domain: &'a str,
+struct SRS0Address {
+    hash: String,
+    tt: String,
+    hostname: String,
+    local: String,
+    domain: String,
 }
 
 #[derive(Debug)]
-struct SRS1Address<'a> {
-    hash: &'a str,
-    hostname: &'a str,
-    // opaque local
+struct SRS1Address {
+    hash: String,
+    hostname: String,
+    opaque_local: String,
+    domain: String,
     // domain
     // TODO: cannot parse the above because the parse_srs1 routine
     //       cannot say 'and now everything until the LOCAL_DOMAIN_SEPARATOR'
 }
 
 struct SRSParser<'a> {
-    split: VecDeque<&'a str>,
+    tokenizer: Tokenizer<'a>
 }
 
 #[derive(Clone,Copy,Debug)]
 enum Err {
     SRSPrefixError,
-    ExpectedNonemptyToken,
-    ExpectedEmptyToken,
+    ExpectedSRSSeparator,
+    ExpectedLocalDomainSeparator,
     ExpectedNoMoreTokens,
+    ExpectedEmptyToken,
+    ExpectedNonemptyToken,
+    ExpectedNonemptyLocalPart,
 }
 
-type SRSParserResult<'a> = Result<SRSAddress<'a>, Err>;
+type SRSParserResult = Result<SRSAddress, Err>;
 
 impl<'a> SRSParser<'a> {
 
     fn new(input: &str) -> SRSParser {
-        // Split the input in srs@domain part
-        let mut at_split = input.split(LOCAL_DOMAIN_SEPARATOR);
-        // Tokenize by SRS_SEPARATOR
-        let srs_split =
-            at_split.next()
-            .map(|s| s.split(SRS_SEPARATOR))
-            .expect("a mail address must have a local part");
-        let tokens = srs_split.chain(at_split).collect();
-
-        let x: SRSParser = SRSParser{
-            split: tokens,
+        let t = Tokenizer::tokenize(input, SRS_SEPARATOR, LOCAL_DOMAIN_SEPARATOR);
+        return SRSParser{
+            tokenizer: t,
         };
-        return x;
     }
 
-    fn expect_srs_prefix(&mut self) -> Result<u8, Err> {
+    fn expect_srs_prefix(&mut self) -> Result<Token, Err> {
         let err = Err::SRSPrefixError;
-        return self.split.pop_front()
+        return self.tokenizer.next()
             .ok_or(err)
-            .and_then(|p| {
-                if p.len() != 4 {
-                    return Err(err);
+            .and_then(|t| {
+                match t {
+                    SRS(_) => Ok(t),
+                    _             => Err(err),
                 }
-
-                let (pre, suff) = p.split_at(3);
-                if pre != "SRS" {
-                    return Err(err);
-                }
-
-                let srs_version_num: Result<u8, _> = suff.parse();
-                return match srs_version_num {
-                    Ok(0) | Ok(1) => Ok(srs_version_num.unwrap()),
-                    _     => Err(err),
-                };
             });
     }
 
     fn expect_finished(&mut self) -> Result<(), Err> {
-        match self.split.pop_front() {
+        match self.tokenizer.next() {
             None => Ok(()),
             _    => Err(Err::ExpectedNoMoreTokens),
         }
     }
 
-    fn expect_nonempty(&mut self) -> Result<&'a str,Err> {
+    fn expect_nonempty_text(&mut self) -> Result<String,Err> {
         let err = Err::ExpectedNonemptyToken;
-        self.split.pop_front()
+        self.tokenizer.next()
             .ok_or(err)
             .and_then(|x| {
-                match x.len() {
-                    0 => Err(err),
-                    _ => Ok(x),
+                match x {
+                    Text("") => Err(err),
+                    Text(t)  => Ok(t.to_string()),
+                    _        => Err(err),
                 }
             })
     }
 
-    fn expect_empty(&mut self) -> Result<(), Err> {
-        let err = Err::ExpectedEmptyToken;
-        self.split.pop_front()
+    fn expect_separator(&mut self, t: Token) -> Result<(), Err> {
+        let err = Err::ExpectedSRSSeparator;
+        self.tokenizer.next()
             .ok_or(err)
-            .and_then(|x| {
-                match x.len() {
-                    0 => Ok(()),
-                    _ => Err(err),
-                }
-            })
+            .and_then(|x| if x == t { Ok(()) } else { Err(err) } )
     }
 
-    fn parse_srs0(&mut self) -> SRSParserResult<'a> {
+    fn expect_srs_separator(&mut self) -> Result<(), Err> {
+        self.expect_separator(SRSSeparator)
+    }
 
-        let hash = self.expect_nonempty();
-        if let Err(x) = hash { return Err(x) }
-        let tt = self.expect_nonempty();
-        if let Err(x) = tt { return Err(x) }
-        let hostname = self.expect_nonempty();
-        if let Err(x) = hostname { return Err(x) }
-        let local = self.expect_nonempty();
-        if let Err(x) = local { return Err(x) }
-        let domain = self.expect_nonempty();
-        if let Err(x) = domain { return Err(x) }
+    fn expect_local_domain_separator(&mut self) -> Result<(), Err> {
+        self.expect_separator(LocalDomainSeparator)
+    }
 
-        if let Err(x) = self.expect_finished() {
-            return Err(x);
+    fn parse_srs0(&mut self) -> SRSParserResult {
+
+        try!(self.expect_srs_separator());
+        let hash = try!(self.expect_nonempty_text());
+        try!(self.expect_srs_separator());
+        let tt = try!(self.expect_nonempty_text());
+        try!(self.expect_srs_separator());
+        let hostname = try!(self.expect_nonempty_text());
+        try!(self.expect_srs_separator());
+        let local = try!(self.expect_nonempty_text());
+        try!(self.expect_separator(LocalDomainSeparator));
+        let mut domain = try!(self.expect_nonempty_text());
+        loop { // because a for loop would need to borrow self.tokenizer mutably...
+            let t = self.tokenizer.next();
+            match t {
+                None => break,
+                Some(t) => {
+                    let ot = self.tokenizer.text_of_token(&t);
+                    domain += &ot;
+                }
+            }
         }
 
         return Ok(SRS0(SRS0Address{
-            hash: hash.unwrap(),
-            tt: tt.unwrap(),
-            hostname: hostname.unwrap(),
-            local: local.unwrap(),
-            domain: domain.unwrap(),
+            hash: hash,
+            tt: tt,
+            hostname: hostname,
+            local: local,
+            domain: domain,
         }));
     }
 
-    fn parse_srs1(&mut self) -> SRSParserResult<'a> {
+    fn parse_srs1(&mut self) -> SRSParserResult {
 
-        let hash = self.expect_nonempty();
-        if let Err(x) = hash { return Err(x) }
-        let hostname = self.expect_nonempty();
-        if let Err(x) = hostname { return Err(x) }
+        try!(self.expect_srs_separator());
+        let hash = try!(self.expect_nonempty_text());
+        try!(self.expect_srs_separator());
+        let hostname = try!(self.expect_nonempty_text());
+        try!(self.expect_srs_separator());
 
-        if let Err(x) = self.expect_empty() {
-            return Err(x);
-        }
+        let (opaque_local, domain) = try!({ // This is ugly...
+            use std::cell::RefCell;
+            use std::borrow::BorrowMut;
+            let mut opaque_local = RefCell::new(String::new());
+            let mut domain = RefCell::new(String::new());
+            {
+                let mut which = opaque_local.borrow_mut();
+                loop {
+                    let t = self.tokenizer.next();
+                    match t {
+                        None => break,
+                        Some(LocalDomainSeparator) => {
+                             which = domain.borrow_mut();
+                             continue;
+                        },
+                        Some(token) => {
+                        which.push_str(self.tokenizer.text_of_token(&token).as_str());
+                        }
+                    }
+                }
+            }
+
+            let opaque_local = opaque_local.into_inner();
+            let domain = domain.into_inner();
+            match opaque_local.as_ref() {
+                "" => Err(Err::ExpectedNonemptyLocalPart),
+                _  => Ok((opaque_local, domain))
+            }
+        });
 
         return Ok (SRS1(SRS1Address{
-            hash: hash.unwrap(),
-            hostname: hostname.unwrap(),
+            hash: hash,
+            hostname: hostname,
+            opaque_local: opaque_local,
+            domain: domain,
         }));
     }
 
-    fn parse(&mut self) -> SRSParserResult<'a> {
+    fn parse(&mut self) -> SRSParserResult {
         return match self.expect_srs_prefix() {
             Err(x) => return Err(x),
-            Ok(0)  => return self.parse_srs0(),
-            Ok(1)  => return self.parse_srs1(),
-            Ok(_)  => panic!("this should have been checked before"),
+            Ok(SRS(0))  => return self.parse_srs0(),
+            Ok(SRS(1))  => return self.parse_srs1(),
+            Ok(_)       => panic!("this should have been checked before"),
         }
     }
 }
 
-impl<'a> SRSAddress<'a> {
+impl SRSAddress {
 
     fn from_string(s: &str) -> SRSParserResult {
         let mut p = SRSParser::new(s);
