@@ -2,7 +2,8 @@ mod tests;
 mod tokenizer;
 mod tokenizer_tests;
 
-use std::collections::VecDeque;
+use std::cell::RefCell;
+
 use srs::tokenizer::*;
 use srs::tokenizer::Token::*;
 
@@ -26,13 +27,13 @@ impl SRSAddress {
     }
     fn is_0(&self) -> bool { return self.get_version() == 0; }
     fn is_1(&self) -> bool { return self.get_version() == 1; }
-    fn SRS0(self) -> SRS0Address {
+    fn srs0(self) -> SRS0Address {
         match self {
             SRS0(srs) => srs,
             _         => panic!("not an SRS0"),
         }
     }
-    fn SRS1(self) -> SRS1Address {
+    fn srs1(self) -> SRS1Address {
         match self {
             SRS1(srs) => srs,
             _         => panic!("not an SRS1"),
@@ -69,9 +70,7 @@ struct SRSParser<'a> {
 enum Err {
     SRSPrefixError,
     ExpectedSRSSeparator,
-    ExpectedLocalDomainSeparator,
     ExpectedNoMoreTokens,
-    ExpectedEmptyToken,
     ExpectedNonemptyToken,
     ExpectedNonemptyLocalPart,
 }
@@ -130,10 +129,6 @@ impl<'a> SRSParser<'a> {
         self.expect_separator(SRSSeparator)
     }
 
-    fn expect_local_domain_separator(&mut self) -> Result<(), Err> {
-        self.expect_separator(LocalDomainSeparator)
-    }
-
     fn parse_srs0(&mut self) -> SRSParserResult {
 
         try!(self.expect_srs_separator());
@@ -157,6 +152,8 @@ impl<'a> SRSParser<'a> {
             }
         }
 
+        try!(self.expect_finished());
+
         return Ok(SRS0(SRS0Address{
             hash: hash,
             tt: tt,
@@ -175,10 +172,8 @@ impl<'a> SRSParser<'a> {
         try!(self.expect_srs_separator());
 
         let (opaque_local, domain) = try!({ // This is ugly...
-            use std::cell::RefCell;
-            use std::borrow::BorrowMut;
-            let mut opaque_local = RefCell::new(String::new());
-            let mut domain = RefCell::new(String::new());
+            let opaque_local = RefCell::new(String::new());
+            let domain = RefCell::new(String::new());
             {
                 let mut which = opaque_local.borrow_mut();
                 loop {
@@ -204,6 +199,8 @@ impl<'a> SRSParser<'a> {
             }
         });
 
+        try!(self.expect_finished());
+
         return Ok (SRS1(SRS1Address{
             hash: hash,
             hostname: hostname,
@@ -213,7 +210,7 @@ impl<'a> SRSParser<'a> {
     }
 
     fn parse(&mut self) -> SRSParserResult {
-        return match self.expect_srs_prefix() {
+        match self.expect_srs_prefix() {
             Err(x) => return Err(x),
             Ok(SRS(0))  => return self.parse_srs0(),
             Ok(SRS(1))  => return self.parse_srs1(),

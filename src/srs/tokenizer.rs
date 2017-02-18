@@ -45,8 +45,6 @@ impl<'a> Iterator for Tokenizer<'a> {
         }
 
         let match_text = &self.input[self.idx..];
-        let S = &self.srs_separator;
-        let L = &self.local_domain_separator;
         let next_char  = &match_text[0..1];
         let (token, move_chars) = {
             if next_char == self.srs_separator  {
@@ -64,7 +62,7 @@ impl<'a> Iterator for Tokenizer<'a> {
                     .find(&self.local_domain_separator).unwrap_or(l);
 
                 use std::cmp::min;
-                let mut move_chars = min(next_srs_sep, next_local_domain_sep);
+                let move_chars = min(next_srs_sep, next_local_domain_sep);
 
                 let token_text = &match_text[..move_chars];
                 let token = match token_text {

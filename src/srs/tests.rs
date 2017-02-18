@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
 
-    use srs::{SRSAddress,SRSParser,SRSParserResult};
+    use srs::SRSAddress;
 
     //fn new_parser_result(s: &str) -> SRSParserResult {
     //}
@@ -14,10 +14,7 @@ mod test {
         assert!(r.is_ok());
         let a = r.unwrap();
         assert!(a.is_0());
-        let a = match a {
-            SRSAddress::SRS0(x) => x,
-            _ => panic!("expected SRS0"),
-        };
+        let a = a.srs0();
         assert!(a.hash == "HHH");
         assert!(a.tt == "TT");
         assert!(a.hostname == "source.com");
@@ -35,7 +32,7 @@ mod test {
         println!("{:?}", a);
         assert!(a.is_1());
 
-        let a = a.SRS1();
+        let a = a.srs1();
         assert!(a.hash == "GGG");
         assert!(a.hostname == "orig.hostname");
         assert!(a.opaque_local == "=HHH=TT=orig-domain-part=orig-local-part");
