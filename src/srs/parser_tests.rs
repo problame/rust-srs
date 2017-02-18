@@ -1,7 +1,7 @@
 #[cfg(test)]
-mod test {
+mod parser_tests {
 
-    use srs::SRSAddress;
+    use srs::parser::SRSAddress;
 
     //fn new_parser_result(s: &str) -> SRSParserResult {
     //}
