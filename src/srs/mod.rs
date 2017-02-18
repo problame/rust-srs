@@ -1,4 +1,4 @@
-mod tokenizer;
+pub mod tokenizer;
 mod tokenizer_tests;
-mod parser;
+pub mod parser;
 mod parser_tests;
