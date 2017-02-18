@@ -5,7 +5,10 @@ mod test {
     use srs::tokenizer::Token::*;
 
     fn assert_tokenize(input: &str, expected: Vec<Token> ) {
-        let t = Tokenizer::tokenize(input);
+        const SRS_SEPARATOR: &'static str = "=";
+        const LOCAL_DOMAIN_SEPARATOR: &'static str = "@";
+
+        let t = Tokenizer::tokenize(input, SRS_SEPARATOR, LOCAL_DOMAIN_SEPARATOR);
         let result: Vec<Token> = t.collect();
 
         if result != expected {
