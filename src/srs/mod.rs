@@ -1,4 +1,6 @@
 mod tests;
+mod tokenizer;
+mod tokenizer_tests;
 
 use std::collections::VecDeque;
 
