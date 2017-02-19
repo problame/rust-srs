@@ -68,6 +68,7 @@ struct SRSParser<'a> {
 pub enum Err {
     SRSPrefixError,
     ExpectedSRSSeparator,
+    ExpectedAnySRSSeparator,
     ExpectedNoMoreTokens,
     ExpectedNonemptyToken,
     ExpectedNonemptyLocalPart,
@@ -127,6 +128,22 @@ impl<'a> SRSParser<'a> {
         self.expect_separator(SRSSeparator)
     }
 
+    fn expect_any_srs_separator(&mut self) -> Result<String,Err> {
+        self.tokenizer.next()
+            .ok_or(Err::ExpectedAnySRSSeparator)
+            .and_then(|x| match x {
+                 Token::SRSSeparator => Ok(self.tokenizer.text_of_token(&x)),
+                 Token::Text(t) => {
+                    if t.starts_with("=") || t.starts_with("-") || t.starts_with("+") {
+                        return Ok(t.to_string());
+                    } else {
+                        return Err(Err::ExpectedAnySRSSeparator);
+                    }
+                 },
+                 _ => Err(Err::ExpectedAnySRSSeparator),
+            })
+    }
+
     fn parse_srs0(&mut self) -> SRSParserResult {
 
         try!(self.expect_srs_separator());
@@ -169,9 +186,15 @@ impl<'a> SRSParser<'a> {
         let hostname = try!(self.expect_nonempty_text());
         try!(self.expect_srs_separator());
 
+        // For a valid SRS1 address, the next character must be a separator =,+,-
+        // See shevek's paper
+        let opaque_sep = try!(self.expect_any_srs_separator());
+
         let (opaque_local, domain) = try!({ // This is ugly...
             let opaque_local = RefCell::new(String::new());
             let domain = RefCell::new(String::new());
+
+            opaque_local.borrow_mut().push_str(opaque_sep.as_str()); // include the separator in the result
             {
                 let mut which = opaque_local.borrow_mut();
                 loop {
