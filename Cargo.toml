@@ -1,0 +1,8 @@
+[package]
+name = "eaas"
+version = "0.1.0"
+authors = ["Christian Schwarz <me@cschwarz.com>"]
+
+[dependencies]
+getopts = "0.2"
+openssl = "0.9.7"
