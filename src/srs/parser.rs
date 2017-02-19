@@ -35,7 +35,12 @@ impl SRSAddress {
             _         => panic!("not an SRS1"),
         }
     }
-
+    pub fn get_hash(self) -> String {
+        match self {
+            SRS0(s) => s.hash.clone(),
+            SRS1(s) => s.hash.clone(),
+        }
+    }
 }
 
 #[derive(Debug)]
