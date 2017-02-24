@@ -1,5 +1,5 @@
 [package]
-name = "eaas"
+name = "rustsrsd"
 version = "0.1.0"
 authors = ["Christian Schwarz <me@cschwarz.com>"]
 
