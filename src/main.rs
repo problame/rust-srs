@@ -10,8 +10,14 @@ use std::env;
 
 use std::net::*;
 use std::io::{Read,Write};
+use std::process;
 
 use srs::parser::{SRSAddress};
+
+fn print_usage(program: &str, opts: Options) {
+    let brief = format!("Usage: {} [options]", program);
+    print!("{}", opts.usage(&brief));
+}
 
 fn main() {
 
@@ -22,10 +28,16 @@ fn main() {
     opts.opt("", "listen.send", "listen for receivers", "", HasArg::Yes, Occur::Req);
     opts.opt("s", "bufsize", "max buf size in bytes", "BYTES", HasArg::Yes, Occur::Req);
 
-    let matches = opts.parse(&args[1..]).unwrap();
+    let matches = match opts.parse(&args[1..]) {
+        Ok(m) => m,
+        Err(e) => {
+            print_usage(&args[0], opts);
+            process::exit(1);
+        }
+    };
 
-    let listener = TcpListener::bind(matches.opt_str("listen.recv").unwrap().as_str());
-    let listener = listener.expect("could not bind");
+    let listen_addr  = matches.opt_str("listen.recv").expect("required option not found");
+    let listener = TcpListener::bind(listen_addr.as_str()).expect("specified listen addr must be bindable");
 
     for stream in listener.incoming() {
         match stream {
