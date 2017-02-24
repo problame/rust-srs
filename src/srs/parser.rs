@@ -43,7 +43,7 @@ impl SRSAddress {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct SRS0Address {
     pub hash: String,
     pub tt: String,
@@ -52,7 +52,7 @@ pub struct SRS0Address {
     pub domain: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct SRS1Address {
     pub hash: String,
     pub hostname: String,

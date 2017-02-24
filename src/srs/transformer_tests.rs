@@ -3,7 +3,7 @@ mod transformer_tests {
 
     extern crate openssl;
 
-    use srs::transformers::{Receiver,ReceiverError};
+    use srs::transformers::{Receiver,ReceiverError,Forwarder,ForwarderError};
     use srs::parser::SRSAddress;
     use openssl::hash::MessageDigest;
 
@@ -69,8 +69,149 @@ mod transformer_tests {
         expect_receive_err(&c, "SRS1=HHHH=b==M59m=TT=a=user@c", check_error);
     }
 
+    fn make_forwarder(key: &str, hostname: &str) -> Forwarder {
+        return Forwarder::new(
+            key.to_owned().into_bytes(),
+            hostname.to_owned().into_bytes(),
+            MessageDigest::sha512()
+            ).expect("test should assert receiver params are ok");
+    }
 
+    #[test]
+    fn it_adds_srs0_prefix() {
 
+        let f = make_forwarder("asecret", "a");
+
+        use srs::transformers::{ForwardableAddress,Forwarder};
+
+        let plain = ForwardableAddress::Plain{
+            local: "user".to_string(),
+            domain: "origin".to_string(),
+        };
+
+        let res = f.forward(plain);
+
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        assert!(res.is_0());
+        let mut res = res.srs0();
+        assert!(res.hostname == "origin");
+        assert!(res.local == "user");
+        assert!(res.domain == "a");
+
+        // Verify hash is correct
+        let r = make_receiver("asecret", "a");
+        let back = r.receive(&SRSAddress::SRS0(res));
+        assert!(back.is_ok());
+
+    }
+
+    #[test]
+    fn it_adds_srs1_prefix_to_srs0() {
+        let f = make_forwarder("bsecret", "b");
+
+        use srs::transformers::{ForwardableAddress,Forwarder};
+        use srs::parser::SRSAddress::{SRS0,SRS1};
+        use srs::parser::SRS0Address;
+
+        let srs0 = ForwardableAddress::SRS(SRS0(SRS0Address{
+            hash: "HHHH".to_string(),
+            tt: "TT".to_string(),
+            hostname: "origin".to_string(),
+            local: "user".to_string(),
+            domain: "a".to_string(),
+        }));
+
+        let res = f.forward(srs0);
+
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        assert!(res.is_1());
+        let mut res = res.srs1();
+
+        assert!(res.hostname == "a");
+        assert!(res.domain == "b");
+        // assert!(res.opaque_local ==  yeah what, we don't know the separator -> TODO
+
+        let r = make_receiver("bsecret", "b");
+        let back = r.receive(&SRSAddress::SRS1(res));
+        assert!(back.is_ok());
+
+    }
+
+    #[test]
+    fn it_updates_domain_on_srs1_address() {
+        let f = make_forwarder("csecret", "c");
+
+        use srs::transformers::{ForwardableAddress,Forwarder};
+        use srs::parser::SRSAddress::{SRS0,SRS1};
+        use srs::parser::SRS1Address;
+
+        let srs1 = ForwardableAddress::SRS(SRS1(SRS1Address{
+            hash: "HBHB".to_string(),
+            hostname: "a".to_string(),
+            opaque_local: "+HHHH+TT+origin+user".to_string(),
+            domain: "b".to_string(),
+        }));
+
+        let res = f.forward(srs1);
+
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        assert!(res.is_1());
+        let res = res.srs1();
+        println!("{:?}", res);
+        assert!(res.domain == "c");
+        assert!(res.hash == "HBHB");
+        assert!(res.hostname == "a");
+        // assert!(res.opaque_local == "HBHB yeah we don't know the separator -> TODO
+
+    }
+
+    #[test]
+    fn it_handles_full_chain_simulation() {
+
+        use srs::transformers::{ForwardableAddress,Forwarder};
+        use srs::transformers::ForwardableAddress::{Plain,SRS};
+        use srs::parser::SRSAddress;
+
+        let plain = Plain{
+            local: "user".to_string(),
+            domain: "origin".to_string(),
+        };
+        println!("{:?}", plain);
+
+        let f_a = make_forwarder("asecret", "a");
+        let f_b = make_forwarder("bsecret", "b");
+        let f_c = make_forwarder("csecret", "c");
+        let r_a = make_receiver("asecret", "a");
+        let r_b = make_receiver("bsecret", "b");
+        let r_c = make_receiver("csecret", "c");
+
+        let res = f_a.forward(plain)
+            .and_then(|x| f_b.forward(SRS(x)))
+            .and_then(|x| f_c.forward(SRS(x)));
+
+        println!("{:?}", res);
+        assert!(res.is_ok());
+        let res = res.unwrap();
+
+        let res = r_c.receive(&res);
+        println!("{:?}", res);
+
+        assert!(res.is_ok());
+        let res = res.unwrap();
+        let res = SRSAddress::from_string(res.as_str());
+        assert!(res.is_ok());
+        let res = r_a.receive(&res.unwrap());
+        println!("{:?}", res);
+
+        assert!(res.is_ok());
+        let res= res.unwrap();
+
+        println!("{:?}", res);
+
+    }
 
 
 }
