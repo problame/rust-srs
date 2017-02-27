@@ -200,7 +200,8 @@ impl Forwarder {
         let mut rewritten: SRSAddress = match address {
             Plain{local, domain} => {
                 let mut srs0 = SRS0(SRS0Address{
-                    hash: "".to_string(), // ugly
+                    separator: "=".to_string(), // TODO fix hardcoded
+                    hash: "".to_string(), // updated below
                     tt: "TODO".to_string(),
                     hostname: domain,
                     local: local,
@@ -210,12 +211,17 @@ impl Forwarder {
                 srs0
             },
             SRS(SRS0(srs0)) => {
-                let mut srs0_local = String::with_capacity(1); // TODO fixme
-                srs0_local.push_str("srs0_local");
+                let opaque_local = format!("{}{}{}{}{}{}{}{}",
+                                           srs0.separator,
+                                           srs0.hash, srs0.separator,
+                                           srs0.tt, srs0.separator,
+                                           srs0.hostname, srs0.separator,
+                                           srs0.local);
                 let mut srs1 = SRS1(SRS1Address{
-                    hash: "".to_string(),
+                    separator: srs0.separator,
+                    hash: "".to_string(), // updated below
                     hostname: srs0.domain,
-                    opaque_local: srs0_local,
+                    opaque_local: opaque_local,
                     domain: hostname,
                 });
                 self.update_hash(&mut srs1);

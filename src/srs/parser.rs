@@ -50,6 +50,7 @@ pub struct SRS0Address {
     pub hostname: String,
     pub local: String,
     pub domain: String,
+    pub separator: String,
 }
 
 #[derive(Debug,Clone)]
@@ -58,6 +59,7 @@ pub struct SRS1Address {
     pub hostname: String,
     pub opaque_local: String,
     pub domain: String,
+    pub separator: String,
 }
 
 struct SRSParser<'a> {
@@ -123,6 +125,7 @@ impl<'a> SRSParser<'a> {
 
         // TODO could go with zero-copy
         return Ok(SRS0(SRS0Address{
+            separator: separator.to_string(),
             hash: hash.to_string(),
             tt: tt.to_string(),
             hostname: hostname.to_string(),
@@ -162,6 +165,7 @@ impl<'a> SRSParser<'a> {
 
         // TODO do zero-copy here
         return Ok (SRS1(SRS1Address{
+            separator: separator.to_string(),
             hash: hash.to_string(),
             hostname: hostname.to_string(),
             opaque_local: opaque_local.to_string(),

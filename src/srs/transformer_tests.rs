@@ -115,6 +115,7 @@ mod transformer_tests {
         use srs::parser::SRS0Address;
 
         let srs0 = ForwardableAddress::SRS(SRS0(SRS0Address{
+            separator: "+".to_string(),
             hash: "HHHH".to_string(),
             tt: "TT".to_string(),
             hostname: "origin".to_string(),
@@ -148,6 +149,7 @@ mod transformer_tests {
         use srs::parser::SRS1Address;
 
         let srs1 = ForwardableAddress::SRS(SRS1(SRS1Address{
+            separator: "=".to_string(),
             hash: "HBHB".to_string(),
             hostname: "a".to_string(),
             opaque_local: "+HHHH+TT+origin+user".to_string(),
