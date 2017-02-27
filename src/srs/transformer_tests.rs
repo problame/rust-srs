@@ -198,7 +198,17 @@ mod transformer_tests {
         assert!(res.is_ok());
         let res = res.unwrap();
 
-        let res = r_c.receive(&res);
+        // Now two ways of bounce can happen
+        //  1) Whoever C forwarded to rejects in SMTP conversation
+        //     => the MTA at C must send abounce to B
+        //  2) Whoever C forwarded to generates a bounce afterwards
+        //     => their MTA will send a bounce to
+        //        2.1  | understands SRS => B, which can verify the hash and pass the bounce to A
+        //        2.2. | otherwise       => C, which cannot verify the hash and should notify the
+        //                                  admin of C, but not notify B or A
+        // 2.2 sounds messy, but it's orthogonal to SPF
+        // -> for this test, only 2.1 is relevant
+        let res = r_b.receive(&res);
         println!("{:?}", res);
 
         assert!(res.is_ok());
