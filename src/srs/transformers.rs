@@ -111,13 +111,12 @@ impl Receiver {
             Ok(x) => x,
         };
 
-        // Verify Hash
         let hash = match address {
             &SRSAddress::SRS0(ref a) => a.hash.as_str(),
             &SRSAddress::SRS1(ref a) => a.hash.as_str(),
         };
 
-        if expected_hash != hash {
+        if !expected_hash.eq_ignore_ascii_case(hash) {
             return Err(ReceiverError::HashVerificationFailed(expected_hash));
         }
 

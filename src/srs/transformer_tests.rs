@@ -69,6 +69,16 @@ mod transformer_tests {
         expect_receive_err(&c, "SRS1=HHHH=b==M59m=TT=a=user@c", check_error);
     }
 
+    #[test]
+    fn it_allows_changed_case_in_hmac() {
+        // From shevek's paper:
+        //  The cryptographic hashes are encoded in base 64, but are compared case insensitively.
+        //  The implementation will issue a warning if it detects that a remote MTA has smashed case, but this will
+        //  not affect the functionality of the code. Timestamps are encoded in base 32.
+        let b = make_receiver("bsecret", "b");
+        expect_receive(&b, "SRS0=m59m=TT=a=user@b", "user@a");
+    }
+
     fn make_forwarder(key: &str, hostname: &str) -> Forwarder {
         return Forwarder::new(
             key.to_owned().into_bytes(),
