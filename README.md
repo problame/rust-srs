@@ -3,9 +3,9 @@
 This projects aims at implementing
 
 * a SRS library in pure Rust
-    - [x] Address tokenizer & parser
+    - [x] Address parser
     - [x] Receive rewriting
-    - [ ] Forward rewriting
+    - [x] Forward rewriting
     - [ ] Rust Docs
 * A daemon exposing above functionality in a Postfix-compatible way
     - [ ] Postfix-compatible TCP / unix socket lookup table server
