@@ -3,9 +3,6 @@ use std::cell::RefCell;
 use srs::tokenizer::*;
 use srs::tokenizer::Token::*;
 
-const SRS_SEPARATOR: &'static str = "=";
-const LOCAL_DOMAIN_SEPARATOR: &'static str = "@";
-
 use self::SRSAddress::*;
 
 #[derive(Debug)]

@@ -126,7 +126,7 @@ impl Receiver {
             SRSAddress::SRS0(ref a) => {
                 let mut rewritten = String::with_capacity(a.local.len() + a.hostname.len() + 1);
                 rewritten.push_str(&a.local);
-                rewritten.push_str("@"); // TODO fix hardcoding
+                rewritten.push_str("@");
                 rewritten.push_str(&a.hostname);
                 Ok(rewritten)
             },
@@ -134,7 +134,7 @@ impl Receiver {
                 let mut rewritten = String::with_capacity(4 + a.opaque_local.len() + 1 + a.hostname.len());
                 rewritten.push_str("SRS0");
                 rewritten.push_str(&a.opaque_local); // contains a.hostname's separator
-                rewritten.push_str("@"); // TODO fix hardcoding
+                rewritten.push_str("@");
                 rewritten.push_str(&a.hostname);
                 Ok(rewritten)
             }
