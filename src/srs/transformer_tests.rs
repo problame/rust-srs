@@ -73,7 +73,8 @@ mod transformer_tests {
         return Forwarder::new(
             key.to_owned().into_bytes(),
             hostname.to_owned().into_bytes(),
-            MessageDigest::sha512()
+            MessageDigest::sha512(),
+            "=",
             ).expect("test should assert receiver params are ok");
     }
 

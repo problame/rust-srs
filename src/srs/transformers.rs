@@ -53,6 +53,13 @@ fn is_email_compatible_ascii(substr: &[u8]) -> bool {
     return true;
 }
 
+fn is_valid_srs_separator(separator: &str) -> bool {
+    match separator {
+        "=" | "+" | "-" => true,
+        _               => false,
+    }
+}
+
 fn compute_addr_hash(key: &PKey, md: &MessageDigest, address: &SRSAddress) -> Result<String,ErrorStack> {
 
     let mut signer = try!(Signer::new(md.clone(), key));
@@ -141,11 +148,13 @@ pub struct Forwarder {
     secret_pkey: PKey,
     pub hostname: Vec<u8>,
     pub md: MessageDigest,
+    pub separator: String,
 }
 
 #[derive(Debug)]
 pub enum ForwarderInitializationError {
     HostnameInvalidChars,
+    InvalidSRSSeparator,
 }
 
 #[derive(Debug)]
@@ -164,15 +173,20 @@ pub enum ForwardableAddress {
 
 impl Forwarder {
 
-    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest) -> Result<Forwarder,ForwarderInitializationError> {
+    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest, separator: &str) -> Result<Forwarder,ForwarderInitializationError> {
 
         if !is_email_compatible_ascii(&hostname) {
             return Err(ForwarderInitializationError::HostnameInvalidChars);
         }
 
+        if !is_valid_srs_separator(separator) {
+            return Err(ForwarderInitializationError::InvalidSRSSeparator);
+        }
+
         let secret_key = PKey::hmac(secret.as_ref()).unwrap();
 
         return Ok(Forwarder{
+            separator: separator.to_string(),
             secret_pkey: secret_key,
             hostname: hostname,
             md: md
@@ -200,7 +214,7 @@ impl Forwarder {
         let mut rewritten: SRSAddress = match address {
             Plain{local, domain} => {
                 let mut srs0 = SRS0(SRS0Address{
-                    separator: "=".to_string(), // TODO fix hardcoded
+                    separator: self.separator.clone(),
                     hash: "".to_string(), // updated below
                     tt: "TODO".to_string(),
                     hostname: domain,
@@ -218,7 +232,7 @@ impl Forwarder {
                                            srs0.hostname, srs0.separator,
                                            srs0.local);
                 let mut srs1 = SRS1(SRS1Address{
-                    separator: srs0.separator,
+                    separator: self.separator.clone(),
                     hash: "".to_string(), // updated below
                     hostname: srs0.domain,
                     opaque_local: opaque_local,
