@@ -1,7 +1,6 @@
 extern crate openssl;
 
 use self::openssl::hash::MessageDigest;
-use self::openssl::memcmp;
 use self::openssl::pkey::PKey;
 use self::openssl::sign::Signer;
 use self::openssl::error::ErrorStack;
@@ -66,13 +65,13 @@ fn compute_addr_hash(key: &PKey, md: &MessageDigest, address: &SRSAddress) -> Re
 
     match *address {
         SRSAddress::SRS0(ref a) => {
-            signer.update(a.tt.as_bytes());
-            signer.update(a.hostname.as_bytes());
-            signer.update(a.local.as_bytes());
+            try!(signer.update(a.tt.as_bytes()));
+            try!(signer.update(a.hostname.as_bytes()));
+            try!(signer.update(a.local.as_bytes()));
         },
         SRSAddress::SRS1(ref a) => {
-            signer.update(a.hostname.as_bytes());
-            signer.update(a.opaque_local.as_bytes());
+            try!(signer.update(a.hostname.as_bytes()));
+            try!(signer.update(a.opaque_local.as_bytes()));
         },
     }
 
@@ -211,7 +210,7 @@ impl Forwarder {
             .expect("should be valid utf8, be checked at compile time");
 
         use self::ForwardableAddress::{SRS,Plain};
-        let mut rewritten: SRSAddress = match address {
+        let rewritten: SRSAddress = match address {
             Plain{local, domain} => {
                 let mut srs0 = SRS0(SRS0Address{
                     separator: self.separator.clone(),
@@ -221,7 +220,7 @@ impl Forwarder {
                     local: local,
                     domain: hostname,
                 });
-                self.update_hash(&mut srs0);
+                try!(self.update_hash(&mut srs0));
                 srs0
             },
             SRS(SRS0(srs0)) => {
@@ -238,7 +237,7 @@ impl Forwarder {
                     opaque_local: opaque_local,
                     domain: hostname,
                 });
-                self.update_hash(&mut srs1);
+                try!(self.update_hash(&mut srs1));
                 srs1
             },
             SRS(SRS1(srs1)) => {
