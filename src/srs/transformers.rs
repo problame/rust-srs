@@ -11,6 +11,9 @@ use srs::parser::{SRSAddress,SRS1Address,SRS0Address};
 use srs::parser::SRSAddress::{SRS0,SRS1};
 use srs::util::{base64_email_safe_encode,base64_email_safe_decode};
 
+use std::time;
+use std::i32;
+
 /* A SHORT EXAMPLE:
  *
  * A to B: MAIL FROM user@a
@@ -27,16 +30,115 @@ use srs::util::{base64_email_safe_encode,base64_email_safe_decode};
  *
  */
 
-pub struct Receiver {
+pub trait Timestamper {
+    fn verify_timestamp(&self, ts: &str) -> Result<(), i32>;
+    fn now_as_timestamp(&self) -> String;
+}
+
+pub struct SRSTimestamper {
+    pub max_valid_delta: u16,
+}
+
+impl SRSTimestamper {
+   pub fn now_in_days_10bit() -> u16 {
+        let secs_since_epoch = time::SystemTime::now()
+            .duration_since(time::UNIX_EPOCH)
+            .expect("UNIX_EPOCH is always earlier than current time")
+            .as_secs();
+        // Break this down to days that fit into 10 bit
+        // => wraparound after > 3 years is fine
+        let days = (secs_since_epoch / (60 * 60 * 24)) % 1024;
+        assert!(days < 1024);
+        return days as u16;
+    }
+
+   pub fn base32_email_safe_decode_10bit(s: &str) -> Result<u16,()> {
+        let lowercase = s.to_ascii_lowercase();
+        let bytes = lowercase.as_bytes();
+        assert!(bytes.len() >= 2);
+        let mut res: u16 = 0;
+
+        fn lowercase_ascii_to_value(a: u8) -> Result<u8, ()> {
+            if a >= 97 && a <= 122 { // a to z
+                return Ok(a - 97);
+            }
+            if a >= 50 && a <= 55 { // 2 to 5
+                return Ok(26 + a - 50);
+            }
+            return Err(());
+        }
+
+        let val_low = try!(lowercase_ascii_to_value(bytes[0]));
+        let val_high = try!(lowercase_ascii_to_value(bytes[1]));
+        assert!(val_low < 32);
+        assert!(val_high < 32);
+        res = val_high as u16;
+        res = res << 5;
+        res |= val_low as u16;
+        return Ok(res);
+    }
+
+    pub fn base32_email_safe_encode_10bit(b: u16) -> String {
+
+        let mut bytes = Vec::with_capacity(2);
+        bytes.push((b & 0x1f) as u8);
+        bytes.push(((b >> 5) & 0x1f) as u8);
+
+        for b in &mut bytes {
+            if *b <= 25 { // map to a to z
+                *b = *b + 97;
+            } else if *b <= 31 { // map to 2 to 5
+                *b = *b - 26 + 50;
+            } else {
+                panic!("base32 only maps values [0,32) to ASCII bytes");
+            }
+        }
+
+        return String::from_utf8(bytes).expect("routine should only produce ASCII bytes");
+    }
+
+}
+
+impl Timestamper for SRSTimestamper  {
+
+      fn verify_timestamp(&self, ts: &str) -> Result<(), i32> {
+        let now = Self::now_in_days_10bit();
+        let days_ts = match Self::base32_email_safe_decode_10bit(ts) {
+            Ok(d)  => d,
+            Err(_) => {
+                return Err(i32::MAX); // TODO hardcoded magic number
+            },
+        };
+        let abs_delta = match now > days_ts {
+            true => (now as i32) - (days_ts as i32),
+            false => (days_ts as i32) - (now as i32),
+        };
+
+        if abs_delta > self.max_valid_delta as i32  {
+            return Err(abs_delta);
+        }
+        return Ok(());
+    }
+
+    fn now_as_timestamp(&self) -> String {
+        let now = Self::now_in_days_10bit();
+        return Self::base32_email_safe_encode_10bit(now);
+    }
+
+}
+
+pub struct Receiver<T> where T: Timestamper {
     secret_pkey: PKey,
     pub hostname: Vec<u8>,
     pub md: MessageDigest,
+    pub timestamper: T,
 }
 
 #[derive(Debug)]
 pub enum ReceiverError {
     HashVerificationFailed(String),
     HashingError(ErrorStack),
+    TimestampError(i32),
 }
 
 #[derive(Debug)]
@@ -84,9 +186,9 @@ fn compute_addr_hash(key: &PKey, md: &MessageDigest, address: &SRSAddress) -> Re
 
 }
 
-impl Receiver {
+impl<T> Receiver<T> where T: Timestamper {
 
-    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest) -> Result<Receiver, ReceiverInitializationError> {
+    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest, timestamper: T) -> Result<Receiver<T>, ReceiverInitializationError> {
 
         if !is_email_compatible_ascii(&hostname) {
             return Err(ReceiverInitializationError::HostnameInvalidChars);
@@ -101,6 +203,7 @@ impl Receiver {
             secret_pkey: secret_pkey,
             hostname: hostname,
             md: md,
+            timestamper: timestamper,
         });
     }
 
@@ -115,9 +218,17 @@ impl Receiver {
             &SRSAddress::SRS0(ref a) => a.hash.as_str(),
             &SRSAddress::SRS1(ref a) => a.hash.as_str(),
         };
-
         if !expected_hash.eq_ignore_ascii_case(hash) {
             return Err(ReceiverError::HashVerificationFailed(expected_hash));
+        }
+
+        if let SRS0(ref a) = *address {
+            match self.timestamper.verify_timestamp(a.tt.as_str()) {
+                Ok(())      => {},
+                Err(delta)  => {
+                    return Err(ReceiverError::TimestampError(delta));
+                }
+            }
         }
 
         return match *address {
@@ -142,11 +253,12 @@ impl Receiver {
 
 
 
-pub struct Forwarder {
+pub struct Forwarder<T> where T: Timestamper {
     secret_pkey: PKey,
     pub hostname: Vec<u8>,
     pub md: MessageDigest,
     pub separator: String,
+    pub timestamper: T,
 }
 
 #[derive(Debug)]
@@ -169,9 +281,9 @@ pub enum ForwardableAddress {
     },
 }
 
-impl Forwarder {
+impl<T> Forwarder<T> where T: Timestamper {
 
-    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest, separator: &str) -> Result<Forwarder,ForwarderInitializationError> {
+    pub fn new(secret: Vec<u8>, hostname: Vec<u8>, md: MessageDigest, separator: &str, timestamper: T) -> Result<Forwarder<T>,ForwarderInitializationError> {
 
         if !is_email_compatible_ascii(&hostname) {
             return Err(ForwarderInitializationError::HostnameInvalidChars);
@@ -187,7 +299,8 @@ impl Forwarder {
             separator: separator.to_string(),
             secret_pkey: secret_key,
             hostname: hostname,
-            md: md
+            md: md,
+            timestamper: timestamper,
         });
     }
 
@@ -214,7 +327,7 @@ impl Forwarder {
                 let mut srs0 = SRS0(SRS0Address{
                     separator: self.separator.clone(),
                     hash: "".to_string(), // updated below
-                    tt: "TODO".to_string(),
+                    tt: self.timestamper.now_as_timestamp(),
                     hostname: domain,
                     local: local,
                     domain: hostname,

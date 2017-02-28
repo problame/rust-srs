@@ -3,19 +3,33 @@ mod transformer_tests {
 
     extern crate openssl;
 
-    use srs::transformers::{Receiver,ReceiverError,Forwarder,ForwarderError};
+    use srs::transformers::{Receiver,ReceiverError,Forwarder,ForwarderError,Timestamper,SRSTimestamper};
     use srs::parser::SRSAddress;
     use openssl::hash::MessageDigest;
 
-    fn make_receiver(key: &str, hostname: &str) -> Receiver {
+    struct MockTimestamper {
+        pub verify: Box<Fn(&str) -> Result<(), i32>>,
+        pub now: Box<Fn() -> String>,
+    }
+    impl Timestamper for MockTimestamper {
+        fn verify_timestamp(&self, ts: &str) -> Result<(), i32> { (self.verify)(ts) }
+        fn now_as_timestamp(&self) -> String { (self.now)() }
+    }
+
+    fn make_receiver(key: &str, hostname: &str) -> Receiver<MockTimestamper> {
         return Receiver::new(
             key.to_owned().into_bytes(),
             hostname.to_owned().into_bytes(),
-            MessageDigest::sha512()
+            MessageDigest::sha512(),
+            MockTimestamper{
+                verify: Box::new(|ts| Ok(())),
+                now: Box::new(|| "AA".to_string()),
+            },
             ).expect("test should assert receiver params are ok");
     }
 
-    fn expect_receive(receiver: &Receiver, input: &str, expect: &str) {
+    fn expect_receive<T>(receiver: &Receiver<T>, input: &str, expect: &str)
+      where T: Timestamper {
         let input_srs = SRSAddress::from_string(input)
             .expect("test should supply valid srs addresss");
         println!("{:?}", input_srs);
@@ -24,8 +38,9 @@ mod transformer_tests {
         assert!(receive == expect);
     }
 
-    fn expect_receive_err<F>(receiver: &Receiver, input: &str, match_err: F)
-        where F: FnOnce(ReceiverError) -> bool {
+    fn expect_receive_err<F,T>(receiver: &Receiver<T>, input: &str, match_err: F)
+        where F: FnOnce(ReceiverError) -> bool,
+              T: Timestamper {
         let input_srs = SRSAddress::from_string(input)
             .expect("test should supply valid srs addresss");
         let receive = receiver.receive(&input_srs);
@@ -79,12 +94,36 @@ mod transformer_tests {
         expect_receive(&b, "SRS0=m59m=TT=a=user@b", "user@a");
     }
 
-    fn make_forwarder(key: &str, hostname: &str) -> Forwarder {
+    #[test]
+    fn it_uses_the_timestamper_to_check_timestamp() {
+        let mut b = make_receiver("bsecret", "b");
+        b.timestamper = MockTimestamper{
+            verify: Box::new(|ts| match ts == "ac" {
+                true => Ok(()),
+                false => Err(23),
+            }),
+            now: Box::new(|| panic!("shouldn't be called")),
+        };
+        expect_receive(&b, "SRS0=pt9d=ac=a=user@b", "user@a");
+        expect_receive_err(&b, "SRS0=tH4m=ae=a=user@b", |e| match e {
+            ReceiverError::TimestampError(23) => true,
+            x => {
+                println!("{:?}", x);
+                false
+            }
+        });
+    }
+
+    fn make_forwarder(key: &str, hostname: &str) -> Forwarder<MockTimestamper>{
         return Forwarder::new(
             key.to_owned().into_bytes(),
             hostname.to_owned().into_bytes(),
             MessageDigest::sha512(),
             "=",
+            MockTimestamper{
+                verify: Box::new(|ts| Err(23)),
+                now: Box::new(|| "aa".to_string()),
+            },
             ).expect("test should assert receiver params are ok");
     }
 
@@ -233,6 +272,66 @@ mod transformer_tests {
         let res= res.unwrap();
 
         println!("{:?}", res);
+
+    }
+
+    #[test]
+    fn srstimestamper_respects_max_valid_delta() {
+        let mut t = SRSTimestamper {
+            max_valid_delta: 3
+        };
+
+        let now = SRSTimestamper::now_in_days_10bit();
+        let good_date = (now + 3) % 1024;
+        let bad_date  = (now + 6) % 1024;
+
+        let good_ts = SRSTimestamper::base32_email_safe_encode_10bit(good_date);
+        let bad_ts = SRSTimestamper::base32_email_safe_encode_10bit(bad_date);
+
+        let r = t.verify_timestamp(&good_ts);
+        println!("{:?}", r);
+        assert!(r == Ok(()));
+
+        let r = t.verify_timestamp(&bad_ts);
+        println!("{:?}", r);
+        assert!(r == Err(6));
+    }
+
+    #[test]
+    fn srstimestamper_base32_works_for_example() {
+        let t = SRSTimestamper {
+            max_valid_delta: 0
+        };
+
+        let enc = SRSTimestamper::base32_email_safe_encode_10bit(23);
+        println!("enc: {}", enc);
+        assert!(enc == "xa");
+        let dec = SRSTimestamper::base32_email_safe_decode_10bit(&enc);
+        assert!(dec.is_ok());
+        let dec = dec.unwrap();
+        println!("dec: {:b}", dec);
+        assert!(dec == 23);
+
+    }
+
+    #[test]
+    fn srstimestamper_base32_works_for_all_10bit_numbers() {
+        let t = SRSTimestamper {
+            max_valid_delta: 0
+        };
+
+        for i in  0..1024 {
+            let enc = SRSTimestamper::base32_email_safe_encode_10bit(i);
+            let dec = SRSTimestamper::base32_email_safe_decode_10bit(&enc);
+            assert!(dec.is_ok());
+            let dec = dec.unwrap();
+            if dec != i {
+                println!("i = {}, enc = {}, dec = {}", i, enc, dec);
+                println!("enc: {}", enc);
+                println!("dec: {:b}", dec);
+                assert!(false);
+            }
+        }
 
     }
 

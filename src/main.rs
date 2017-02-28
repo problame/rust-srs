@@ -66,11 +66,12 @@ fn main() {
                     continue;
                 }
 
-                use srs::transformers::Receiver;
+                use srs::transformers::{Receiver,SRSTimestamper};
                 let r = Receiver::new(
                     vec![0,0,0,0],
                     vec![0xb, 0xa, 0xd, 0xf, 0x0, 0x0, 0xd],
                     openssl::hash::MessageDigest::sha512(),
+                    SRSTimestamper{max_valid_delta: 5},
                 );
                 let r = match r {
                     Err(x) => {
