@@ -1,8 +1,5 @@
 use std::cell::RefCell;
 
-use srs::tokenizer::*;
-use srs::tokenizer::Token::*;
-
 use self::SRSAddress::*;
 
 #[derive(Debug)]
