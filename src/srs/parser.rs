@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 
 use self::SRSAddress::*;
 
@@ -27,12 +26,6 @@ impl SRSAddress {
         match self {
             SRS1(srs) => srs,
             _         => panic!("not an SRS1"),
-        }
-    }
-    pub fn get_hash(self) -> String {
-        match self {
-            SRS0(s) => s.hash.clone(),
-            SRS1(s) => s.hash.clone(),
         }
     }
 }
@@ -67,11 +60,6 @@ pub enum Err {
     SRS1FormatError,
     EmptyRemainingAddress,
     NoDomainInAddress,
-    ExpectedSRSSeparator,
-    ExpectedAnySRSSeparator,
-    ExpectedNoMoreTokens,
-    ExpectedNonemptyToken,
-    ExpectedNonemptyLocalPart,
 }
 
 type SRSParserResult = Result<SRSAddress, Err>;
@@ -91,7 +79,7 @@ impl<'a> SRSParser<'a> {
         let mut idx = 5;
 
         let mut comps = Vec::with_capacity(3);
-        for i in 0..3 {
+        for _ in 0..3 {
             if let Some(pos) = self.input[idx..].find(separator) {
                 comps.push(&self.input[idx..idx+pos]);
                 idx += pos + 1; // Skip it
@@ -136,7 +124,7 @@ impl<'a> SRSParser<'a> {
 
         let mut comps = Vec::with_capacity(2);
 
-        for i in 0..2 {
+        for _ in 0..2 {
             if let Some(pos) = self.input[idx..].find(separator) {
                 comps.push(&self.input[idx..idx+pos]);
                 idx += pos + 1; // Skip separator
@@ -165,8 +153,6 @@ impl<'a> SRSParser<'a> {
             opaque_local: opaque_local.to_string(),
             domain: domain.to_string(),
         }));
-
-        return Err(Err::ExpectedSRSSeparator);
 
     }
 
